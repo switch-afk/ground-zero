@@ -16,6 +16,31 @@ async function getBal(a) { try { return a && typeof a === 'string' ? (await conn
 async function getRug(m) { try { return (await axios.get(`https://api.rugcheck.xyz/v1/tokens/${m}/report/summary`, { timeout: 15000 })).data; } catch (_) { return null; } }
 
 // ══════════════════════════════════════════════════════════════
+//  Get total holder count via RPC
+//  Uses getProgramAccounts on Token Program with mint filter
+//  and amount > 0 filter to count non-zero holders
+// ══════════════════════════════════════════════════════════════
+const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+async function getHolderCount(mint) {
+    try {
+        const accounts = await connection.getProgramAccounts(TOKEN_PROGRAM_ID, {
+            dataSlice: { offset: 64, length: 8 }, // just read amount field (8 bytes at offset 64)
+            filters: [
+                { dataSize: 165 }, // token account size
+                { memcmp: { offset: 0, bytes: mint } }, // filter by mint
+            ],
+        });
+        // Count accounts with amount > 0
+        let count = 0;
+        for (const acc of accounts) {
+            const amount = acc.account.data.readBigUInt64LE(0);
+            if (amount > 0n) count++;
+        }
+        return count;
+    } catch (_) { return null; }
+}
+
+// ══════════════════════════════════════════════════════════════
 //  Get SOL price in USD
 // ══════════════════════════════════════════════════════════════
 let cachedSolPrice = null, solPriceTs = 0;
@@ -215,12 +240,13 @@ function detectLP(p) {
 //  Build Token Embed
 // ══════════════════════════════════════════════════════════════
 async function buildTokenEmbed(mint, { sourceColor, sourceTag, profileData }) {
-    const [{ pair, totalLiq }, supply, topRaw, rug, paid] = await Promise.all([
+    const [{ pair, totalLiq }, supply, topRaw, rug, paid, holderCount] = await Promise.all([
         getDexData(mint),
         getTokenSupply(mint),
         getLargest(mint),
         getRug(mint),
         checkPaid(mint),
+        getHolderCount(mint),
     ]);
 
     // ── Fallback: pump.fun API + RPC when DexScreener has no data ──
@@ -367,7 +393,7 @@ async function buildTokenEmbed(mint, { sourceColor, sourceTag, profileData }) {
     embed.addFields(
         { name: '🏷️ Dex Paid', value: paidText, inline: true },
         { name: '📦 Total Supply', value: supplyStr, inline: true },
-        { name: '\u200b', value: '\u200b', inline: true },
+        { name: '👥 Holders', value: holderCount != null ? fN(holderCount) : 'N/A', inline: true },
 
         { name: '📈 1H Change', value: ch1h, inline: true },
         { name: '💵 1H Volume', value: vol1h, inline: true },
