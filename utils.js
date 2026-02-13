@@ -22,22 +22,32 @@ async function getRug(m) { try { return (await axios.get(`https://api.rugcheck.x
 // ══════════════════════════════════════════════════════════════
 const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
 async function getHolderCount(mint) {
+    // Method 1: getProgramAccounts count
     try {
-        const accounts = await connection.getProgramAccounts(TOKEN_PROGRAM_ID, {
-            dataSlice: { offset: 64, length: 8 }, // just read amount field (8 bytes at offset 64)
+        const resp = await connection.getProgramAccounts(TOKEN_PROGRAM_ID, {
+            dataSlice: { offset: 0, length: 1 },
             filters: [
-                { dataSize: 165 }, // token account size
-                { memcmp: { offset: 0, bytes: mint } }, // filter by mint
+                { dataSize: 165 },
+                { memcmp: { offset: 0, bytes: mint } },
             ],
         });
-        // Count accounts with amount > 0
-        let count = 0;
-        for (const acc of accounts) {
-            const amount = acc.account.data.readBigUInt64LE(0);
-            if (amount > 0n) count++;
-        }
-        return count;
-    } catch (_) { return null; }
+        if (resp && resp.length > 0) return resp.length;
+    } catch (e) { console.error('[Holders] RPC error:', e.message); }
+
+    // Method 2: pump.fun API
+    try {
+        const { data } = await axios.get(`https://frontend-api-v3.pump.fun/coins/${mint}`, { timeout: 10000 });
+        if (data?.holder_count != null) return data.holder_count;
+    } catch (_) {}
+
+    // Method 3: RugCheck may have holder info
+    try {
+        const { data } = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${mint}/report/summary`, { timeout: 10000 });
+        if (data?.totalHolders != null) return data.totalHolders;
+        if (data?.holderCount != null) return data.holderCount;
+    } catch (_) {}
+
+    return null;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -393,7 +403,7 @@ async function buildTokenEmbed(mint, { sourceColor, sourceTag, profileData }) {
     embed.addFields(
         { name: '🏷️ Dex Paid', value: paidText, inline: true },
         { name: '📦 Total Supply', value: supplyStr, inline: true },
-        { name: '👥 Holders', value: holderCount != null ? fN(holderCount) : 'N/A', inline: true },
+        { name: '👥 Holders', value: holderCount != null && holderCount > 0 ? holderCount.toLocaleString() : 'N/A', inline: true },
 
         { name: '📈 1H Change', value: ch1h, inline: true },
         { name: '💵 1H Volume', value: vol1h, inline: true },
