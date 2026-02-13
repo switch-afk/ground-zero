@@ -1,0 +1,13 @@
+{
+  "name": "ground-zero",
+  "version": "4.1.0",
+  "main": "index.js",
+  "scripts": { "start": "node index.js", "dev": "node --watch index.js" },
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "ws": "^8.18.0",
+    "axios": "^1.7.9",
+    "dotenv": "^16.4.7",
+    "@solana/web3.js": "^1.98.0"
+  }
+}
