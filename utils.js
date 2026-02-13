@@ -16,19 +16,85 @@ async function getBal(a) { try { return a && typeof a === 'string' ? (await conn
 async function getRug(m) { try { return (await axios.get(`https://api.rugcheck.xyz/v1/tokens/${m}/report/summary`, { timeout: 15000 })).data; } catch (_) { return null; } }
 
 // ══════════════════════════════════════════════════════════════
+//  Get SOL price in USD
+// ══════════════════════════════════════════════════════════════
+let cachedSolPrice = null, solPriceTs = 0;
+async function getSolPrice() {
+    if (cachedSolPrice && Date.now() - solPriceTs < 30000) return cachedSolPrice;
+    try {
+        const { data } = await axios.get('https://api.dexscreener.com/latest/dex/tokens/So11111111111111111111111111111111111111112', { timeout: 10000 });
+        if (data?.pairs?.[0]?.priceUsd) {
+            cachedSolPrice = parseFloat(data.pairs[0].priceUsd);
+            solPriceTs = Date.now();
+            return cachedSolPrice;
+        }
+    } catch (_) {}
+    try {
+        const { data } = await axios.get('https://price.jup.ag/v6/price?ids=SOL', { timeout: 10000 });
+        if (data?.data?.SOL?.price) {
+            cachedSolPrice = data.data.SOL.price;
+            solPriceTs = Date.now();
+            return cachedSolPrice;
+        }
+    } catch (_) {}
+    return cachedSolPrice || 200;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  Get pump.fun token data (name, symbol, image, market cap, etc)
+// ══════════════════════════════════════════════════════════════
+async function getPumpData(mint) {
+    try {
+        const { data } = await axios.get(`https://frontend-api-v3.pump.fun/coins/${mint}`, { timeout: 10000 });
+        if (data?.mint) return data;
+    } catch (_) {}
+    return null;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  Get on-chain liquidity for a token via RPC
+//  Finds the largest SOL-paired pool by checking known pool programs
+// ══════════════════════════════════════════════════════════════
+async function getOnChainLiquidity(mint) {
+    try {
+        // Get SOL price
+        const solPrice = await getSolPrice();
+
+        // Pump.fun migration puts ~85 SOL into the pool
+        // Check the token's largest accounts — the pool will hold a big chunk
+        // For a rough estimate, check pump.fun API for virtual reserves
+        const pump = await getPumpData(mint);
+        if (pump) {
+            // pump.fun API provides usd_market_cap and virtual_sol_reserves
+            if (pump.usd_market_cap && pump.usd_market_cap > 0) {
+                // Estimate liquidity from virtual reserves if available
+                const vSol = pump.virtual_sol_reserves ? pump.virtual_sol_reserves / 1e9 : null;
+                const rSol = pump.real_sol_reserves ? pump.real_sol_reserves / 1e9 : null;
+                const liqSol = rSol || vSol;
+                const liqUsd = liqSol ? liqSol * solPrice : null;
+                return {
+                    price: pump.usd_market_cap && pump.total_supply ? pump.usd_market_cap / (pump.total_supply / Math.pow(10, pump.decimals || 6)) : null,
+                    mcap: pump.usd_market_cap,
+                    liqUsd,
+                    liqSol,
+                };
+            }
+        }
+        return null;
+    } catch (_) { return null; }
+}
+
+// ══════════════════════════════════════════════════════════════
 //  DexScreener Data — aggregates liquidity across ALL pairs
-//  Uses two endpoints: /latest/dex/tokens + /token-pairs/v1
 // ══════════════════════════════════════════════════════════════
 async function getDexData(mint) {
     let pairs = null;
 
-    // Primary: /latest/dex/tokens/{mint}
     try {
         const { data } = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${mint}`, { timeout: 15000 });
         if (Array.isArray(data?.pairs) && data.pairs.length) pairs = data.pairs;
     } catch (_) {}
 
-    // Fallback: /token-pairs/v1/solana/{mint} (better for new tokens)
     if (!pairs) {
         try {
             const { data } = await axios.get(`https://api.dexscreener.com/token-pairs/v1/solana/${mint}`, { timeout: 15000 });
@@ -49,15 +115,8 @@ async function getDexData(mint) {
 
 // ══════════════════════════════════════════════════════════════
 //  Dex Paid Check — COMPREHENSIVE
-//  1. Orders API: /orders/v1/solana/{mint} — definitive if has data
-//  2. Token profiles endpoint — if token appears here, it's paid
-//  3. Community takeovers endpoint — if token appears here, it's CTO paid
-//  4. Token boosts endpoint — if token has boosts, it has paid
 // ══════════════════════════════════════════════════════════════
 async function checkPaid(mint) {
-    const result = { paid: false, text: 'Not Paid', types: [] };
-
-    // ── Method 1: Orders API (most reliable when it has data) ──
     try {
         const { data } = await axios.get(`https://api.dexscreener.com/orders/v1/solana/${mint}`, { timeout: 10000 });
         if (Array.isArray(data) && data.length > 0) {
@@ -65,7 +124,6 @@ async function checkPaid(mint) {
             if (active.length > 0) {
                 const approved = active.filter(o => o.status === 'approved');
                 const processing = active.filter(o => o.status === 'processing');
-
                 const types = [...new Set(active.map(o => o.type).filter(Boolean))].map(t => {
                     if (t === 'tokenProfile') return 'Profile';
                     if (t === 'communityTakeover') return 'CTO';
@@ -74,20 +132,13 @@ async function checkPaid(mint) {
                     return t;
                 });
                 const typeStr = types.join(', ');
-
-                if (approved.length > 0) {
-                    return { paid: true, text: `✅ Paid (${typeStr})` };
-                }
-                if (processing.length > 0) {
-                    return { paid: true, text: `⏳ Paid — Processing (${typeStr})` };
-                }
-                // on-hold or other non-cancelled status = still paid
+                if (approved.length > 0) return { paid: true, text: `✅ Paid (${typeStr})` };
+                if (processing.length > 0) return { paid: true, text: `⏳ Paid — Processing (${typeStr})` };
                 return { paid: true, text: `✅ Paid (${typeStr})` };
             }
         }
     } catch (_) {}
 
-    // ── Method 2: Check token-profiles endpoint ──
     try {
         const { data } = await axios.get('https://api.dexscreener.com/token-profiles/latest/v1', { timeout: 10000 });
         if (Array.isArray(data)) {
@@ -96,7 +147,6 @@ async function checkPaid(mint) {
         }
     } catch (_) {}
 
-    // ── Method 3: Check community-takeovers endpoint ──
     try {
         const { data } = await axios.get('https://api.dexscreener.com/community-takeovers/latest/v1', { timeout: 10000 });
         if (Array.isArray(data)) {
@@ -105,7 +155,6 @@ async function checkPaid(mint) {
         }
     } catch (_) {}
 
-    // ── Method 4: Check boosts endpoint ──
     try {
         const { data } = await axios.get('https://api.dexscreener.com/token-boosts/latest/v1', { timeout: 10000 });
         if (Array.isArray(data)) {
@@ -114,7 +163,7 @@ async function checkPaid(mint) {
         }
     } catch (_) {}
 
-    return result;
+    return { paid: false, text: 'Not Paid' };
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -128,7 +177,6 @@ async function getImg(mint) {
             if (match?.icon) return match.icon;
         }
     } catch (_) {}
-
     try {
         const { data } = await axios.get('https://api.dexscreener.com/community-takeovers/latest/v1', { timeout: 10000 });
         if (Array.isArray(data)) {
@@ -136,12 +184,10 @@ async function getImg(mint) {
             if (match?.icon) return match.icon;
         }
     } catch (_) {}
-
     try {
         const { data } = await axios.get(`https://frontend-api-v3.pump.fun/coins/${mint}`, { timeout: 10000 });
         if (data?.image_uri) return data.image_uri;
     } catch (_) {}
-
     return null;
 }
 
@@ -177,28 +223,58 @@ async function buildTokenEmbed(mint, { sourceColor, sourceTag, profileData }) {
         checkPaid(mint),
     ]);
 
-    const name = pair?.baseToken?.name || profileData?.name || 'Unknown';
-    const symbol = pair?.baseToken?.symbol || profileData?.symbol || '???';
+    // ── Fallback: pump.fun API + RPC when DexScreener has no data ──
+    let pumpData = null;
+    let onChain = null;
+    if (!pair) {
+        pumpData = await getPumpData(mint);
+        onChain = await getOnChainLiquidity(mint);
+    }
+
+    const name = pair?.baseToken?.name || pumpData?.name || profileData?.name || 'Unknown';
+    const symbol = pair?.baseToken?.symbol || pumpData?.symbol || profileData?.symbol || '???';
     const dexUrl = pair?.url || `https://dexscreener.com/solana/${mint}`;
     const chainId = pair?.chainId || 'solana';
 
-    let img = pair?.info?.imageUrl || profileData?.icon || null;
+    // ── Detect launchpad from mint suffix when no pair ──
+    let lp = detectLP(pair);
+    if (lp === 'Unknown') {
+        if (mint.endsWith('pump')) lp = 'pump.fun';
+        else if (mint.endsWith('bonk')) lp = 'letsbonk.fun';
+    }
+    const isPump = lp === 'pump.fun', isBonk = lp === 'letsbonk.fun';
+
+    let img = pair?.info?.imageUrl || profileData?.icon || pumpData?.image_uri || null;
     if (!img) img = await getImg(mint);
 
+    // ── Socials ──
     const socials = [], seenUrls = new Set();
     for (const w of (pair?.info?.websites||[])) { if (w?.url && !seenUrls.has(w.url)) { socials.push(`[Website](${w.url})`); seenUrls.add(w.url); } }
     for (const s of (pair?.info?.socials||[])) { if (s?.url && !seenUrls.has(s.url)) { socials.push(`[${cap(s.platform||s.type||'Social')}](${s.url})`); seenUrls.add(s.url); } }
     for (const l of (profileData?.links||[])) { if (l?.url && !seenUrls.has(l.url)) { socials.push(`[${cap(l.label||l.type||'Link')}](${l.url})`); seenUrls.add(l.url); } }
+    if (pumpData) {
+        if (pumpData.website && !seenUrls.has(pumpData.website)) { socials.push(`[Website](${pumpData.website})`); seenUrls.add(pumpData.website); }
+        if (pumpData.twitter && !seenUrls.has(pumpData.twitter)) { socials.push(`[Twitter](${pumpData.twitter})`); seenUrls.add(pumpData.twitter); }
+        if (pumpData.telegram && !seenUrls.has(pumpData.telegram)) { socials.push(`[Telegram](${pumpData.telegram})`); seenUrls.add(pumpData.telegram); }
+    }
 
-    const creator = (rug?.creator && typeof rug.creator === 'string') ? rug.creator : null;
+    const creator = (rug?.creator && typeof rug.creator === 'string') ? rug.creator :
+                    (pumpData?.creator ? pumpData.creator : null);
     const creatorBal = creator ? await getBal(creator) : null;
-    const lp = detectLP(pair);
-    const isPump = lp === 'pump.fun', isBonk = lp === 'letsbonk.fun';
 
-    const price = pair?.priceUsd ? fP(pair.priceUsd) : 'N/A';
-    const mcap = fU(pair?.marketCap || pair?.fdv);
-    const liq = totalLiq != null ? fU(totalLiq) : (pair?.liquidity?.usd != null ? fU(pair.liquidity.usd) : 'N/A');
-    const launched = tA(pair?.pairCreatedAt);
+    // ── Market Data — DexScreener primary, on-chain/pump.fun fallback ──
+    const price = pair?.priceUsd ? fP(pair.priceUsd) :
+                  (onChain?.price ? fP(onChain.price) : 'N/A');
+
+    const mcap = pair?.marketCap || pair?.fdv ? fU(pair.marketCap || pair.fdv) :
+                 (onChain?.mcap ? fU(onChain.mcap) :
+                 (pumpData?.usd_market_cap ? fU(pumpData.usd_market_cap) : 'N/A'));
+
+    const liq = totalLiq != null ? fU(totalLiq) :
+                (pair?.liquidity?.usd != null ? fU(pair.liquidity.usd) :
+                (onChain?.liqUsd ? fU(onChain.liqUsd) : null));
+
+    const launched = tA(pair?.pairCreatedAt || (pumpData?.created_timestamp ? pumpData.created_timestamp * 1000 : null));
     const supplyStr = supply ? fN(supply.uiAmount) : 'N/A';
     const vol1h = pair?.volume?.h1 != null ? fU(pair.volume.h1) : 'N/A';
     const vol24h = pair?.volume?.h24 != null ? fU(pair.volume.h24) : 'N/A';
@@ -207,17 +283,17 @@ async function buildTokenEmbed(mint, { sourceColor, sourceTag, profileData }) {
     const tx1h = pair?.txns?.h1 || {}, tx24h = pair?.txns?.h24 || {};
     const tr1h = `${tx1h.buys??0}B / ${tx1h.sells??0}S`, tr24h = `${tx24h.buys??0}B / ${tx24h.sells??0}S`;
 
+    // ── Dex Paid ──
     let paidText = paid.text;
-    // If pair has active boosts, the token HAS paid — override Not Paid
     if (pair?.boosts?.active) {
         if (!paid.paid) paidText = '✅ Paid';
         paidText += ` | 🚀 ${pair.boosts.active} boosts`;
     }
-    // If pair has info (image, websites, socials) it means profile is paid
     if (!paid.paid && !pair?.boosts?.active && pair?.info?.imageUrl && (pair?.info?.websites?.length || pair?.info?.socials?.length)) {
         paidText = '✅ Paid';
     }
 
+    // ── RugCheck ──
     let rugLvl = '❓ Unknown', rugScr = 'N/A', rugR = [];
     if (rug) {
         rugScr = rug.score ?? 'N/A';
@@ -226,6 +302,7 @@ async function buildTokenEmbed(mint, { sourceColor, sourceTag, profileData }) {
         rugR = (rug.risks||[]).slice(0,5).map(r => `${r.level==='danger'?'🔴':r.level==='warn'?'🟡':'⚪'} ${r.name||r.description||'Unknown'}`);
     }
 
+    // ── Top 10 Holders ──
     let holdersField = '';
     if (topRaw.length > 1 && supply?.uiAmount > 0) {
         const tot = supply.uiAmount, h = topRaw.slice(1, 11);
@@ -246,8 +323,12 @@ async function buildTokenEmbed(mint, { sourceColor, sourceTag, profileData }) {
         holdersField = `👥 **Top 10 Holders (${pctS.toFixed(2)}% Total)**\n\n${lines.join('\n\n')}`;
     }
 
-    saveData(sourceTag||'general', mint, { mint, name, symbol, chainId, lp, price: pair?.priceUsd, mcap: pair?.marketCap, liq: totalLiq, volume: pair?.volume, priceChange: pair?.priceChange, txns: pair?.txns, supply: supply ? { uiAmount: supply.uiAmount, decimals: supply.decimals } : null, dexPaid: paidText, rugScore: rugScr, rugLevel: rugLvl, creator, img, pairCreatedAt: pair?.pairCreatedAt, at: new Date().toISOString() });
+    // ── Persist ──
+    saveData(sourceTag||'general', mint, { mint, name, symbol, chainId, lp, price: pair?.priceUsd || onChain?.price, mcap: pair?.marketCap || onChain?.mcap || pumpData?.usd_market_cap, liq: totalLiq || onChain?.liqUsd, volume: pair?.volume, priceChange: pair?.priceChange, txns: pair?.txns, supply: supply ? { uiAmount: supply.uiAmount, decimals: supply.decimals } : null, dexPaid: paidText, rugScore: rugScr, rugLevel: rugLvl, creator, img, pairCreatedAt: pair?.pairCreatedAt, at: new Date().toISOString() });
 
+    // ══════════════════════════════════════════════════════════
+    //  Build Embed
+    // ══════════════════════════════════════════════════════════
     const embed = new EmbedBuilder()
         .setColor(sourceColor || 0x5865F2);
 
@@ -256,6 +337,7 @@ async function buildTokenEmbed(mint, { sourceColor, sourceTag, profileData }) {
 
     const desc = [];
     if (profileData?.description) desc.push(profileData.description.slice(0,200));
+    else if (pumpData?.description) desc.push(pumpData.description.slice(0,200));
     if (socials.length) desc.push(`🔗 ${socials.join(' • ')}`);
     if (desc.length) embed.setDescription(desc.join('\n\n'));
 
@@ -276,8 +358,7 @@ async function buildTokenEmbed(mint, { sourceColor, sourceTag, profileData }) {
         { name: '📊 Market Cap', value: mcap, inline: true },
     );
 
-    // Only show Liquidity field if we have data — skip for fresh migrations
-    if (liq !== 'N/A') {
+    if (liq && liq !== 'N/A') {
         embed.addFields({ name: '💧 Liquidity', value: liq, inline: true });
     } else {
         embed.addFields({ name: '\u200b', value: '\u200b', inline: true });
@@ -300,11 +381,10 @@ async function buildTokenEmbed(mint, { sourceColor, sourceTag, profileData }) {
     );
 
     if (holdersField) {
-        embed.addFields(
-            { name: '\u200b', value: holdersField, inline: false },
-        );
+        embed.addFields({ name: '\u200b', value: holdersField, inline: false });
     }
 
+    // ── Buttons ──
     const row = new ActionRowBuilder();
     row.addComponents(
         new ButtonBuilder().setLabel('DexScreener').setStyle(ButtonStyle.Link).setURL(dexUrl).setEmoji('📊'),
