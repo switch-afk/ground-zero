@@ -208,7 +208,15 @@ async function buildTokenEmbed(mint, { sourceColor, sourceTag, profileData }) {
     const tr1h = `${tx1h.buys??0}B / ${tx1h.sells??0}S`, tr24h = `${tx24h.buys??0}B / ${tx24h.sells??0}S`;
 
     let paidText = paid.text;
-    if (pair?.boosts?.active) paidText += ` | 🚀 ${pair.boosts.active} boosts`;
+    // If pair has active boosts, the token HAS paid — override Not Paid
+    if (pair?.boosts?.active) {
+        if (!paid.paid) paidText = '✅ Paid';
+        paidText += ` | 🚀 ${pair.boosts.active} boosts`;
+    }
+    // If pair has info (image, websites, socials) it means profile is paid
+    if (!paid.paid && !pair?.boosts?.active && pair?.info?.imageUrl && (pair?.info?.websites?.length || pair?.info?.socials?.length)) {
+        paidText = '✅ Paid';
+    }
 
     let rugLvl = '❓ Unknown', rugScr = 'N/A', rugR = [];
     if (rug) {
