@@ -22,7 +22,31 @@ async function getRug(m) { try { return (await axios.get(`https://api.rugcheck.x
 // ══════════════════════════════════════════════════════════════
 const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
 async function getHolderCount(mint) {
-    // Method 1: getProgramAccounts count
+    // Method 1: Solscan API (fast, reliable)
+    try {
+        const resp = await axios.get(`https://api.solscan.io/v2/token/holders?token=${mint}&page=1&page_size=1`, {
+            timeout: 10000,
+            headers: {
+                'User-Agent': 'Mozilla/5.0',
+                'Accept': 'application/json',
+            },
+        });
+        if (resp.data?.data?.total != null) return resp.data.data.total;
+    } catch (_) {}
+
+    // Method 2: Solscan old endpoint
+    try {
+        const resp = await axios.get(`https://api.solscan.io/token/holders?token=${mint}&offset=0&size=1`, {
+            timeout: 10000,
+            headers: {
+                'User-Agent': 'Mozilla/5.0',
+                'Accept': 'application/json',
+            },
+        });
+        if (resp.data?.data?.total != null) return resp.data.data.total;
+    } catch (_) {}
+
+    // Method 3: RPC getProgramAccounts (heavy but always works)
     try {
         const resp = await connection.getProgramAccounts(TOKEN_PROGRAM_ID, {
             dataSlice: { offset: 0, length: 1 },
@@ -32,20 +56,7 @@ async function getHolderCount(mint) {
             ],
         });
         if (resp && resp.length > 0) return resp.length;
-    } catch (e) { console.error('[Holders] RPC error:', e.message); }
-
-    // Method 2: pump.fun API
-    try {
-        const { data } = await axios.get(`https://frontend-api-v3.pump.fun/coins/${mint}`, { timeout: 10000 });
-        if (data?.holder_count != null) return data.holder_count;
-    } catch (_) {}
-
-    // Method 3: RugCheck may have holder info
-    try {
-        const { data } = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${mint}/report/summary`, { timeout: 10000 });
-        if (data?.totalHolders != null) return data.totalHolders;
-        if (data?.holderCount != null) return data.holderCount;
-    } catch (_) {}
+    } catch (e) { console.error('[Holders] RPC fallback error:', e.message); }
 
     return null;
 }
