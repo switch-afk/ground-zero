@@ -16,52 +16,6 @@ async function getBal(a) { try { return a && typeof a === 'string' ? (await conn
 async function getRug(m) { try { return (await axios.get(`https://api.rugcheck.xyz/v1/tokens/${m}/report/summary`, { timeout: 15000 })).data; } catch (_) { return null; } }
 
 // ══════════════════════════════════════════════════════════════
-//  Get total holder count via RPC
-//  Uses getProgramAccounts on Token Program with mint filter
-//  and amount > 0 filter to count non-zero holders
-// ══════════════════════════════════════════════════════════════
-const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
-async function getHolderCount(mint) {
-    // Method 1: Solscan API (fast, reliable)
-    try {
-        const resp = await axios.get(`https://api.solscan.io/v2/token/holders?token=${mint}&page=1&page_size=1`, {
-            timeout: 10000,
-            headers: {
-                'User-Agent': 'Mozilla/5.0',
-                'Accept': 'application/json',
-            },
-        });
-        if (resp.data?.data?.total != null) return resp.data.data.total;
-    } catch (_) {}
-
-    // Method 2: Solscan old endpoint
-    try {
-        const resp = await axios.get(`https://api.solscan.io/token/holders?token=${mint}&offset=0&size=1`, {
-            timeout: 10000,
-            headers: {
-                'User-Agent': 'Mozilla/5.0',
-                'Accept': 'application/json',
-            },
-        });
-        if (resp.data?.data?.total != null) return resp.data.data.total;
-    } catch (_) {}
-
-    // Method 3: RPC getProgramAccounts (heavy but always works)
-    try {
-        const resp = await connection.getProgramAccounts(TOKEN_PROGRAM_ID, {
-            dataSlice: { offset: 0, length: 1 },
-            filters: [
-                { dataSize: 165 },
-                { memcmp: { offset: 0, bytes: mint } },
-            ],
-        });
-        if (resp && resp.length > 0) return resp.length;
-    } catch (e) { console.error('[Holders] RPC fallback error:', e.message); }
-
-    return null;
-}
-
-// ══════════════════════════════════════════════════════════════
 //  Get SOL price in USD
 // ══════════════════════════════════════════════════════════════
 let cachedSolPrice = null, solPriceTs = 0;
@@ -261,13 +215,12 @@ function detectLP(p) {
 //  Build Token Embed
 // ══════════════════════════════════════════════════════════════
 async function buildTokenEmbed(mint, { sourceColor, sourceTag, profileData }) {
-    const [{ pair, totalLiq }, supply, topRaw, rug, paid, holderCount] = await Promise.all([
+    const [{ pair, totalLiq }, supply, topRaw, rug, paid] = await Promise.all([
         getDexData(mint),
         getTokenSupply(mint),
         getLargest(mint),
         getRug(mint),
         checkPaid(mint),
-        getHolderCount(mint),
     ]);
 
     // ── Fallback: pump.fun API + RPC when DexScreener has no data ──
@@ -414,7 +367,7 @@ async function buildTokenEmbed(mint, { sourceColor, sourceTag, profileData }) {
     embed.addFields(
         { name: '🏷️ Dex Paid', value: paidText, inline: true },
         { name: '📦 Total Supply', value: supplyStr, inline: true },
-        { name: '👥 Holders', value: holderCount != null && holderCount > 0 ? holderCount.toLocaleString() : 'N/A', inline: true },
+        { name: '\u200b', value: '\u200b', inline: true },
 
         { name: '📈 1H Change', value: ch1h, inline: true },
         { name: '💵 1H Volume', value: vol1h, inline: true },
