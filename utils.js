@@ -14,6 +14,7 @@ async function getTokenSupply(m) { try { return (await connection.getTokenSupply
 async function getLargest(m) { try { return (await connection.getTokenLargestAccounts(new PublicKey(m))).value.slice(0, 11); } catch (_) { return []; } }
 async function getBal(a) { try { return a && typeof a === 'string' ? (await connection.getBalance(new PublicKey(a))) / 1e9 : null; } catch (_) { return null; } }
 async function getRug(m) { try { return (await axios.get(`https://api.rugcheck.xyz/v1/tokens/${m}/report/summary`, { timeout: 15000 })).data; } catch (_) { return null; } }
+async function getDevHoldings(owner, mint) { try { const accs = await connection.getParsedTokenAccountsByOwner(new PublicKey(owner), { mint: new PublicKey(mint) }); let total = 0; for (const a of accs.value) total += a.account.data.parsed?.info?.tokenAmount?.uiAmount || 0; return total; } catch (_) { return 0; } }
 
 // ══════════════════════════════════════════════════════════════
 //  Get SOL price in USD
@@ -260,7 +261,7 @@ async function buildTokenEmbed(mint, { sourceColor, sourceTag, profileData }) {
 
     const creator = (rug?.creator && typeof rug.creator === 'string') ? rug.creator :
                     (pumpData?.creator ? pumpData.creator : null);
-    const creatorBal = creator ? await getBal(creator) : null;
+    const [creatorBal, devHoldings] = creator ? await Promise.all([getBal(creator), getDevHoldings(creator, mint)]) : [null, 0];
 
     // ── Market Data — DexScreener primary, on-chain/pump.fun fallback ──
     const price = pair?.priceUsd ? fP(pair.priceUsd) :
@@ -345,8 +346,10 @@ async function buildTokenEmbed(mint, { sourceColor, sourceTag, profileData }) {
         { name: '📋 Contract Address', value: `\`${mint}\``, inline: false },
     );
     if (creator) {
-        const b = creatorBal !== null ? ` (${creatorBal.toFixed(2)} SOL)` : '';
-        embed.addFields({ name: '👤 Dev Wallet', value: `\`${creator}\`${b}`, inline: false });
+        const solscanUrl = `https://solscan.io/account/${creator}`;
+        const b = creatorBal !== null ? ` | ${creatorBal.toFixed(2)} SOL` : '';
+        const holdPct = devHoldings > 0 && supply?.uiAmount > 0 ? ` | Holdings: ${(devHoldings / supply.uiAmount * 100).toFixed(2)}%` : '';
+        embed.addFields({ name: '👤 Dev Wallet', value: `[${creator}](${solscanUrl})${b}${holdPct}`, inline: false });
     }
 
     embed.addFields(
