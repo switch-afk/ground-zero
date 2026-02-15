@@ -350,7 +350,7 @@ async function buildTokenEmbed(mint, { sourceColor, sourceTag, profileData }) {
         if (creatorBal !== null) details.push(`💰 ${creatorBal.toFixed(2)} SOL`);
         if (devHoldings > 0 && supply?.uiAmount > 0) details.push(`📦 Holdings: ${(devHoldings / supply.uiAmount * 100).toFixed(2)}%`);
         const detailLine = details.length ? `\n${details.join(' | ')}` : '';
-        embed.addFields({ name: '👤 Dev Wallet', value: `[${creator}](${solscanUrl})${detailLine}`, inline: false });
+        embed.addFields({ name: '👤 Dev Wallet', value: `[${creator}](${solscanUrl})${detailLine}\n\u200b`, inline: false });
     }
 
     embed.addFields(
@@ -371,7 +371,7 @@ async function buildTokenEmbed(mint, { sourceColor, sourceTag, profileData }) {
     embed.addFields(
         { name: '📦 Total Supply', value: supplyStr, inline: true },
         { name: '🏷️ Dex Paid', value: paidText, inline: true },
-        { name: '\u200b', value: '\u200b', inline: false },
+        { name: '\u200b', value: '\u200b', inline: true },
         { name: '📈 1H Change', value: ch1h, inline: true },
         { name: '💵 1H Volume', value: vol1h, inline: true },
         { name: '🔄 1H Trades', value: tr1h, inline: true },
