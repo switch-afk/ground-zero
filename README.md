@@ -22,6 +22,10 @@ Tracks new Solana token migrations, DexScreener paid profiles, community takeove
 - Copy CA button (sends copyable address)
 - Refresh button (re-fetches latest data)
 
+## Demo
+
+[![Ground Zero](https://img.youtube.com/vi/fRbbp0uBzrc/maxresdefault.jpg)](https://youtu.be/fRbbp0uBzrc)
+
 ## Setup
 
 ```bash
