@@ -371,7 +371,6 @@ async function buildTokenEmbed(mint, { sourceColor, sourceTag, profileData }) {
     embed.addFields(
         { name: '📦 Total Supply', value: supplyStr, inline: true },
         { name: '🏷️ Dex Paid', value: paidText, inline: true },
-        { name: '\u200b', value: '\u200b', inline: false },
         { name: '📈 1H Change', value: ch1h, inline: true },
         { name: '💵 1H Volume', value: vol1h, inline: true },
         { name: '🔄 1H Trades', value: tr1h, inline: true },
@@ -399,7 +398,7 @@ async function buildTokenEmbed(mint, { sourceColor, sourceTag, profileData }) {
         new ButtonBuilder().setLabel('LetsBonk.fun').setStyle(ButtonStyle.Link).setURL(`https://letsbonk.fun/token/${mint}`).setEmoji('🐕'),
     );
     row.addComponents(
-        new ButtonBuilder().setLabel('Padre').setStyle(ButtonStyle.Link).setURL(`https://trade.padre.gg/?mint=${mint}`).setEmoji('🪖'),
+        new ButtonBuilder().setLabel('Padre').setStyle(ButtonStyle.Link).setURL(`https://trade.padre.gg/trade/solana/${mint}`).setEmoji('🪖'),
         new ButtonBuilder().setCustomId(`copy_ca:${mint}`).setLabel('Copy CA').setStyle(ButtonStyle.Secondary).setEmoji('📋'),
         new ButtonBuilder().setCustomId(`refresh:${mint}:${sourceTag||'general'}`).setLabel('Refresh').setStyle(ButtonStyle.Primary).setEmoji('🔄'),
     );
