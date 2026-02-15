@@ -225,10 +225,9 @@ async function buildTokenEmbed(mint, { sourceColor, sourceTag, profileData }) {
     ]);
 
     // ── Fallback: pump.fun API + RPC when DexScreener has no data ──
-    let pumpData = null;
+    let pumpData = await getPumpData(mint);
     let onChain = null;
     if (!pair) {
-        pumpData = await getPumpData(mint);
         onChain = await getOnChainLiquidity(mint);
     }
 
@@ -347,9 +346,11 @@ async function buildTokenEmbed(mint, { sourceColor, sourceTag, profileData }) {
     );
     if (creator) {
         const solscanUrl = `https://solscan.io/account/${creator}`;
-        const b = creatorBal !== null ? ` | ${creatorBal.toFixed(2)} SOL` : '';
-        const holdPct = devHoldings > 0 && supply?.uiAmount > 0 ? ` | Holdings: ${(devHoldings / supply.uiAmount * 100).toFixed(2)}%` : '';
-        embed.addFields({ name: '👤 Dev Wallet', value: `[${creator}](${solscanUrl})${b}${holdPct}`, inline: false });
+        const details = [];
+        if (creatorBal !== null) details.push(`💰 ${creatorBal.toFixed(2)} SOL`);
+        if (devHoldings > 0 && supply?.uiAmount > 0) details.push(`📦 Holdings: ${(devHoldings / supply.uiAmount * 100).toFixed(2)}%`);
+        const detailLine = details.length ? `\n${details.join(' | ')}` : '';
+        embed.addFields({ name: '👤 Dev Wallet', value: `[${creator}](${solscanUrl})${detailLine}`, inline: false });
     }
 
     embed.addFields(
