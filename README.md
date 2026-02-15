@@ -25,7 +25,7 @@ Tracks new Solana token migrations, DexScreener paid profiles, community takeove
 ## Setup
 
 ```bash
-git clone <repo>
+git clone https://github.com/switch-afk/ground-zero
 cd solana-discord-bot
 npm install
 cp .env.example .env
