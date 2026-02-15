@@ -349,11 +349,12 @@ async function buildTokenEmbed(mint, { sourceColor, sourceTag, profileData }) {
         const details = [];
         if (creatorBal !== null) details.push(`💰 ${creatorBal.toFixed(2)} SOL`);
         if (devHoldings > 0 && supply?.uiAmount > 0) details.push(`📦 Holdings: ${(devHoldings / supply.uiAmount * 100).toFixed(2)}%`);
-        const detailLine = details.length ? `\n${details.join(' | ')}` : '';
+        const detailLine = details.length ? `\n\n${details.join(' | ')}` : '';
         embed.addFields({ name: '👤 Dev Wallet', value: `[${creator}](${solscanUrl})${detailLine}`, inline: false });
     }
 
     embed.addFields(
+        { name: '\u200b', value: '\u200b', inline: false },
         { name: '⛓️ Chain', value: cap(chainId), inline: true },
         { name: '🚀 Launchpad', value: lp, inline: true },
         { name: '⏰ Launched', value: launched, inline: true },
@@ -373,6 +374,7 @@ async function buildTokenEmbed(mint, { sourceColor, sourceTag, profileData }) {
         { name: '🏷️ Dex Paid', value: paidText, inline: true },
         { name: '\u200b', value: '\u200b', inline: true },
 
+        { name: '\u200b', value: '\u200b', inline: false },
         { name: '📈 1H Change', value: ch1h, inline: true },
         { name: '💵 1H Volume', value: vol1h, inline: true },
         { name: '🔄 1H Trades', value: tr1h, inline: true },
@@ -400,6 +402,7 @@ async function buildTokenEmbed(mint, { sourceColor, sourceTag, profileData }) {
         new ButtonBuilder().setLabel('LetsBonk.fun').setStyle(ButtonStyle.Link).setURL(`https://letsbonk.fun/token/${mint}`).setEmoji('🐕'),
     );
     row.addComponents(
+        new ButtonBuilder().setLabel('Padre').setStyle(ButtonStyle.Link).setURL(`https://trade.padre.gg`).setEmoji('🪖'),
         new ButtonBuilder().setCustomId(`copy_ca:${mint}`).setLabel('Copy CA').setStyle(ButtonStyle.Secondary).setEmoji('📋'),
         new ButtonBuilder().setCustomId(`refresh:${mint}:${sourceTag||'general'}`).setLabel('Refresh').setStyle(ButtonStyle.Primary).setEmoji('🔄'),
     );
