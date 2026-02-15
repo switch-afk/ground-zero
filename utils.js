@@ -369,9 +369,9 @@ async function buildTokenEmbed(mint, { sourceColor, sourceTag, profileData }) {
     }
 
     embed.addFields(
-        { name: '📦 Total Supply', value: supplyStr, inline: true },
-        { name: '🏷️ Dex Paid', value: paidText, inline: true },
-        { name: '\u200b', value: '\u200b', inline: false },
+        { name: '📦 Total Supply', value: `${supplyStr}\n\u200b`, inline: true },
+        { name: '🏷️ Dex Paid', value: `${paidText}\n\u200b`, inline: true },
+        { name: '\u200b', value: '\u200b', inline: true },
         { name: '📈 1H Change', value: ch1h, inline: true },
         { name: '💵 1H Volume', value: vol1h, inline: true },
         { name: '🔄 1H Trades', value: tr1h, inline: true },
