@@ -53,6 +53,7 @@ async function processQueue(client, channelId) {
             if (!channel) { console.error('[Migration] Channel not found'); continue; }
 
             console.log(`[Migration] Processing: ${data.mint} (${data._platform})`);
+            await sleep(2000); // let on-chain token accounts settle
             const { embed, components } = await buildTokenEmbed(data.mint, {
                 sourceColor: 0x00ff88,
                 sourceTag: 'migration',
