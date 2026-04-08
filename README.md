@@ -64,12 +64,13 @@ Bot needs these permissions:
 ## File Structure
 
 ```
-├── index.js              # Entry point, scanner, buttons, ticker dropdown
+├── index.js              # Entry point, button handlers
 ├── utils.js              # Core logic: API calls, embed builder, formatting
 ├── routes/
 │   ├── migration.js      # PumpPortal WebSocket (pump.fun + letsbonk.fun)
 │   ├── dexPaid.js        # DexScreener paid profiles polling
-│   └── cto.js            # DexScreener community takeovers polling
+│   ├── cto.js            # DexScreener community takeovers polling
+│   └── scanner.js        # CA scan + ticker search with dropdown
 ├── data/                 # Auto-created, stores token JSON snapshots
 ├── package.json
 └── .env
